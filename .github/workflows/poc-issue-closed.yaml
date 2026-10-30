@@ -1,0 +1,41 @@
+# PoC / structural reproduction of:
+#   mongodb/apix-action/.github/workflows/_issue-closed.yaml@82fcb87b9fb3c764337b88b3da492b4b51d3f4d1
+# The "Find Jira key" step below is copied verbatim from that reusable workflow.
+# The final step invokes the real transition-jira composite action from the same
+# pinned commit, with a dummy token and a harmless echo endpoint, to show that the
+# attacker-selected key is the value used in the credentialed Jira transition call.
+name: poc-issue-closed-jira-key
+
+on:
+  issues:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  close-jira:
+    name: close-jira (PoC)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Find Jira key
+        id: find
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          JIRA_KEY=$(gh issue view ${{ github.event.issue.number }} --comments --repo ${{ github.repository }} | grep 'was created for internal tracking' | grep -oE 'CLOUDP-[0-9]+' | head -1)
+          echo "key=$JIRA_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Show extracted key
+        run: |
+          echo "extracted key = '${{ steps.find.outputs.key }}'"
+
+      - name: Transition Jira ticket (real action, mock endpoint + dummy token)
+        uses: mongodb/apix-action/transition-jira@82fcb87b9fb3c764337b88b3da492b4b51d3f4d1
+        with:
+          token: dummy-token-not-a-secret
+          issue-key: ${{ steps.find.outputs.key }}
+          transition-id: "1"
+          api-base: https://httpbin.org/anything
